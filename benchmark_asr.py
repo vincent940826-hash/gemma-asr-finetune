@@ -27,14 +27,24 @@ print(f"Using device: {device}")
 cc = OpenCC('s2t')
 
 def clean_text(text):
-    """基本文字清理：轉正體、移除標點符號、轉小寫、去除多餘空格"""
+    """強化版文字清理：數字轉中文、轉正體、移除標點符號、轉小寫、去除所有空格"""
     if not text:
-        return ""
+        return "" 
+    # 1. 數字正規化：將字串中的阿拉伯數字轉為中文數字 (例如 "18世紀" -> "十八世紀")
+    try:
+        # cn2an.transform 可以聰明地把混雜在文字中的數字轉換過來
+        text = cn2an.transform(text, "an2cn")
+    except Exception:
+        pass # 萬一轉換發生例外，就保持原樣繼續處理
+    # 2. 轉正體中文
     text = cc.convert(text)
-    # 移除常見標點符號
+    # 3. 移除常見標點符號
     text = re.sub(r'[，。！？：；「」『』、（）—─""\'’.]', '', text)
-    # 轉小寫並去除前後空格
-    return text.strip().lower()
+    # 4. 轉小寫 (針對英文單字)
+    text = text.lower()
+    # 5. 徹底移除所有空白字元 (\s+ 包含空格、換行、tab 等)
+    text = re.sub(r'\s+', '', text)
+    return text
 
 # --- 1. 載入資料集並統一重採樣至 16kHz ---
 print("Loading dataset...")
