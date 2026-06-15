@@ -1,12 +1,14 @@
 import time
 import asyncio
+import numpy as np
+from faster_whisper import WhisperModel
 from src.asr.agreement import get_longest_common_prefix
 
 class BreezeStreamingASR:
-    def __init__(self, model_path: str = "MediaTek-Research/Breeze-ASR-25"):
-        # Future-proofing: Structure assuming faster-whisper (CTranslate2) backend
-        # e.g., self.model = faster_whisper.WhisperModel(model_path, device="cuda", compute_type="float16")
+    def __init__(self, model_path: str = "./models/breeze-25-ct2"):
         self.model_path = model_path
+        # Initialize faster-whisper model
+        self.model = WhisperModel(self.model_path, device="cuda", compute_type="float16")
         
         # Audio configuration
         self.sample_rate = 16000
@@ -58,7 +60,7 @@ class BreezeStreamingASR:
                 return
             
             # Run inference
-            current_transcript = await self._mock_generate(bytes(window))
+            current_transcript = await self._generate(bytes(window), is_final=False)
             
             # Local Agreement
             stable_prefix = get_longest_common_prefix(self.last_transcript, current_transcript)
@@ -79,7 +81,7 @@ class BreezeStreamingASR:
                 return
             
             # Run inference on the full utterance
-            final_transcript = await self._mock_generate(bytes(self.audio_buffer), is_final=True)
+            final_transcript = await self._generate(bytes(self.audio_buffer), is_final=True)
             
             await self.event_queue.put({"type": "final", "text": final_transcript})
             
@@ -89,32 +91,33 @@ class BreezeStreamingASR:
             self.stable_prefix_emitted = ""
             self.last_inference_time = time.time()
 
-    async def _mock_generate(self, audio_data: bytes, is_final: bool = False) -> str:
+    def _prepare_audio(self, audio_data: bytes) -> np.ndarray:
         """
-        Mock inference mimicking faster-whisper.
-        In reality, this would be:
-        `await asyncio.get_running_loop().run_in_executor(None, self.model.transcribe, np_audio)`
+        Converts raw PCM16 bytes into normalized numpy.float32 array.
         """
-        # Simulate computation time
-        await asyncio.sleep(0.1)
+        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+        return audio_np
+
+    async def _generate(self, audio_data: bytes, is_final: bool = False) -> str:
+        """
+        Runs the actual faster-whisper inference in a background thread to avoid blocking.
+        """
+        audio_np = self._prepare_audio(audio_data)
         
-        # Dummy logic based on length of audio to simulate growing text
-        duration_sec = len(audio_data) / (self.sample_rate * self.bytes_per_sample)
+        # Dynamic parameters based on inference type
+        beam_size = 5 if is_final else 1
+        condition_on_previous_text = False  # Set False for partial to avoid hallucinations
         
-        # A mock transcript that grows over time
-        base_text = "我目前正在參加一個計畫，需要你的協助，你是一名專業的工程師。"
+        loop = asyncio.get_running_loop()
         
-        # Roughly 6 characters per second for our mock
-        chars_to_show = int(duration_sec * 6)
-        if chars_to_show == 0:
-            return ""
+        # Run the blocking transcribe call in a thread pool
+        def transcribe_task():
+            segments, info = self.model.transcribe(
+                audio_np, 
+                beam_size=beam_size, 
+                condition_on_previous_text=condition_on_previous_text
+            )
+            return "".join(segment.text for segment in segments)
             
-        text = base_text[:chars_to_show]
-        
-        # Add some noise/flicker if it's not final, to test local agreement
-        # This will randomly replace the last character, simulating an unstable tail.
-        if not is_final and len(text) > 0 and chars_to_show < len(base_text):
-            flicker = ["的", "了", "呢", "啊"][int(time.time() * 10) % 4]
-            text = text[:-1] + flicker
-            
-        return text
+        transcript = await loop.run_in_executor(None, transcribe_task)
+        return transcript.strip()
