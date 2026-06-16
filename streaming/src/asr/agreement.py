@@ -12,5 +12,6 @@ def get_longest_common_prefix(prev_text: str, curr_text: str) -> str:
     min_len = min(len(prev_text), len(curr_text))
     while i < min_len and prev_text[i] == curr_text[i]:
         i += 1
-    
+
     return prev_text[:i]
+    

@@ -13,7 +13,7 @@ async def audio_producer(worker: BreezeStreamingASR):
     bytes_per_chunk = int(16000 * 2 * chunk_duration) # 640 bytes
     dummy_chunk = b'\x00' * bytes_per_chunk
     
-    print("🎤 [Producer] Starting mock audio stream...")
+    print("[Producer] Starting mock audio stream...")
     for i in range(chunks):
         # Simulate real-time arrival
         await asyncio.sleep(chunk_duration)
@@ -28,10 +28,8 @@ async def event_consumer(worker: BreezeStreamingASR):
     """
     while True:
         event = await worker.event_queue.get()
-        if event['type'] == 'partial':
-            print(f"🔄 [PARTIAL] {event['text']}")
-        elif event['type'] == 'final':
-            print(f"✅ [FINAL] {event['text']}")
+        print(event)
+        if event['type'] == 'final':
             break
 
 async def main():
