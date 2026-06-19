@@ -12,12 +12,12 @@ def main():
     
     # Load dataset
     loader = ASRDatasetLoader(processor)
-    # For demonstration, we load a small subset of Common Voice
-    # In a real run, you'd load the full dataset or local jsonl
     print("Loading datasets...")
-    raw_dataset = loader.load_common_voice(split="train", limit=100) 
+    raw_train_dataset = loader.load_common_voice(split="train")
+    raw_eval_dataset = loader.load_common_voice(split="validation")
     
-    train_dataset = GemmaASRDataset(raw_dataset, prompt=loader.gemma_prompt)
+    train_dataset = GemmaASRDataset(raw_train_dataset, prompt=loader.gemma_prompt)
+    eval_dataset = GemmaASRDataset(raw_eval_dataset, prompt=loader.gemma_prompt)
     collator = ASRDataCollator(processor)
     
     training_args = TrainingArguments(
@@ -31,6 +31,7 @@ def main():
         optim="paged_adamw_8bit", # Critical for VRAM limit
         gradient_checkpointing=True,
         logging_steps=10,
+        eval_strategy="epoch",
         save_strategy="epoch",
         remove_unused_columns=False, # Required because inputs are dynamic dicts
     )
@@ -39,6 +40,7 @@ def main():
         model=model,
         args=training_args,
         train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
         data_collator=collator,
     )
     

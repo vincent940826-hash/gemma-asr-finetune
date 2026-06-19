@@ -31,7 +31,7 @@ def transcribe(audio_path, processor, model):
     audio_array, _ = librosa.load(audio_path, sr=sr)
     
     prompt = (
-        "Transcribe the following speech in Traditional Chinese into Traditional Chinese text. "
+        "Transcribe the following speech segment in Traditional Chinese into Traditional Chinese text. "
         "Follow these specific instructions for formatting the answer:\n"
         "* Only output the transcription, with no newlines.\n"
         "* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three."

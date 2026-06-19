@@ -130,16 +130,21 @@ class ASRDataCollator:
         
         labels = batch["input_ids"].clone()
         
-        # Mask out the prompt tokens from the labels
-        prompt_batch = self.processor(
-            text=prompt_texts,
-            return_tensors="pt",
-            padding=True
-        )
-        
         for i in range(len(labels)):
-            prompt_length = (prompt_batch["input_ids"][i] != self.processor.tokenizer.pad_token_id).sum()
-            labels[i, :prompt_length] = -100
+            # Accurately compute prompt length WITH audio tokens
+            prompt_inputs = self.processor(
+                text=prompt_texts[i],
+                audio=[audio_arrays[i]],
+                return_tensors="pt"
+            )
+            prompt_length = prompt_inputs["input_ids"].shape[1]
+            
+            if self.processor.tokenizer.padding_side == "right":
+                labels[i, :prompt_length] = -100
+            else:
+                pad_len = (batch["input_ids"][i] == self.processor.tokenizer.pad_token_id).sum()
+                labels[i, pad_len : pad_len + prompt_length] = -100
+                
             labels[i, batch["input_ids"][i] == self.processor.tokenizer.pad_token_id] = -100
             
         batch["labels"] = labels
