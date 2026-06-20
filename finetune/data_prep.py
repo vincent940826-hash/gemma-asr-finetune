@@ -20,7 +20,6 @@ class ASRDatasetLoader:
             "Follow these specific instructions for formatting the answer:\n"
             "* Only output the transcription, with no newlines.\n"
             "* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three."
-            "<|audio|>"
         )
 
     def process_audio(self, audio_path=None, audio_array=None, orig_sr=None):
@@ -118,7 +117,28 @@ class ASRDataCollator:
         prompt_texts = [f["prompt_text"] for f in features]
         target_texts = [f["target_text"] for f in features]
         
-        full_texts = [f"{p}\n{t}" for p, t in zip(prompt_texts, target_texts)]
+        batch_messages = []
+        for i in range(len(features)):
+            batch_messages.append([
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt_texts[i]},
+                        {"type": "audio", "audio": audio_arrays[i]},
+                    ]
+                },
+                {
+                    "role": "model",
+                    "content": [
+                        {"type": "text", "text": target_texts[i]}
+                    ]
+                }
+            ])
+            
+        full_texts = self.processor.apply_chat_template(
+            batch_messages,
+            tokenize=False
+        )
         
         # Processor pads audio lists dynamically to the max length in batch
         batch = self.processor(
@@ -131,9 +151,25 @@ class ASRDataCollator:
         labels = batch["input_ids"].clone()
         
         for i in range(len(labels)):
+            # To compute prompt length accurately, we format a message with only the user turn
+            user_msg = [[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt_texts[i]},
+                        {"type": "audio", "audio": audio_arrays[i]},
+                    ]
+                }
+            ]]
+            prompt_only_text = self.processor.apply_chat_template(
+                user_msg,
+                tokenize=False,
+                add_generation_prompt=True
+            )[0]
+            
             # Accurately compute prompt length WITH audio tokens
             prompt_inputs = self.processor(
-                text=prompt_texts[i],
+                text=prompt_only_text,
                 audio=[audio_arrays[i]],
                 return_tensors="pt"
             )

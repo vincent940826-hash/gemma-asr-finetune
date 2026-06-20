@@ -30,17 +30,33 @@ def transcribe(audio_path, processor, model):
         
     audio_array, _ = librosa.load(audio_path, sr=sr)
     
-    prompt = (
+    prompt_text = (
         "Transcribe the following speech segment in Traditional Chinese into Traditional Chinese text. "
         "Follow these specific instructions for formatting the answer:\n"
         "* Only output the transcription, with no newlines.\n"
         "* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three."
-        "<|audio|>"
+    )
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt_text},
+                {"type": "audio", "audio": audio_array},
+            ]
+        }
+    ]
+    
+    text_prompt = processor.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+        enable_thinking=False
     )
     
     inputs = processor(
-        text=prompt,
-        audio=[audio_array],
+        text=text_prompt,
+        audio=audio_array,
+        sampling_rate=sr,
         return_tensors="pt"
     ).to(model.device)
     

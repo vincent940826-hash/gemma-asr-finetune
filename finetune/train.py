@@ -22,8 +22,8 @@ def main():
     
     training_args = TrainingArguments(
         output_dir="./outputs",
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=8,
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=4,
         learning_rate=2e-4,
         num_train_epochs=3,
         fp16=True, # Critical for V100
@@ -34,6 +34,8 @@ def main():
         eval_strategy="epoch",
         save_strategy="epoch",
         remove_unused_columns=False, # Required because inputs are dynamic dicts
+        dataloader_num_workers=2,
+        dataloader_pin_memory=True,
     )
     
     trainer = Trainer(

@@ -52,14 +52,32 @@ class GemmaFinetunedASRModel(GemmaASRModel):
         self.model.eval()
 
     def transcribe_batch(self, audio_arrays: list, sampling_rates: list) -> list[str]:
-        prompt = (
+        prompt_text = (
             "Transcribe the following speech segment in Traditional Chinese into Traditional Chinese text. "
             "Follow these specific instructions for formatting the answer:\n"
             "* Only output the transcription, with no newlines.\n"
             "* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three."
-            "<|audio|>"
         )
-        text_prompts = [prompt for _ in audio_arrays]
+        
+        batch_messages = []
+        for audio_array in audio_arrays:
+            batch_messages.append([
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt_text},
+                        {"type": "audio", "audio": audio_array},
+                    ]
+                }
+            ])
+            
+        text_prompts = self.processor.apply_chat_template(
+            batch_messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=False
+        )
+        
         sr = sampling_rates[0] if sampling_rates else 16000
         
         gemma_inputs = self.processor(
