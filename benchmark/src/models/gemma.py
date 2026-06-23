@@ -23,6 +23,12 @@ class GemmaASRModel(BaseASRModel):
     def transcribe_batch(self, audio_arrays: list, sampling_rates: list) -> list[str]:
         # 建立 ASR Prompt
         batch_messages = []
+        prompt_text = (
+            "Transcribe the following speech segment in Traditional Chinese into Traditional Chinese text. "
+            "Follow these specific instructions for formatting the answer:\n"
+            "* Only output the transcription, with no newlines.\n"
+            "* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three."
+        )
         for audio_array in audio_arrays:
             batch_messages.append([
                 {
@@ -30,7 +36,7 @@ class GemmaASRModel(BaseASRModel):
                     "content": [
                         {
                             "type": "text", 
-                            "text": "Transcribe the following speech segment in Chinese into Chinese text.\n\nFollow these specific instructions for formatting the answer:\n* Only output the transcription, with no newlines.\n* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three."
+                            "text": prompt_text
                         },
                         {
                             "type": "audio", 

@@ -34,18 +34,19 @@ class GemmaFinetunedASRModel(GemmaASRModel):
         if self.processor.tokenizer.pad_token is None:
             self.processor.tokenizer.pad_token = self.processor.tokenizer.eos_token
             
-        # 使用與您訓練時相同的 4-bit 量化配置載入 base model
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
-        )
-        
         base_model = AutoModelForMultimodalLM.from_pretrained(
             self.model_id, 
-            quantization_config=bnb_config,
+            torch_dtype=torch.bfloat16,
             device_map="auto" if self.device == "cuda" else None
         )
         
+        # 修復 V100 上的 FP16 注意力溢位問題 (避免推論時產生 NaN 與亂碼)
+        if hasattr(base_model.config, "audio_config") and base_model.config.audio_config is not None:
+            base_model.config.audio_config.attention_invalid_logits_value = -60000.0
+        if hasattr(base_model, "audio_tower") and getattr(base_model, "audio_tower") is not None:
+            if hasattr(base_model.audio_tower, "config") and base_model.audio_tower.config is not None:
+                base_model.audio_tower.config.attention_invalid_logits_value = -60000.0
+
         # 載入您微調好的 LoRA 權重
         print(f"Loading finetuned LoRA weights from: {self.peft_model_id}...")
         self.model = PeftModel.from_pretrained(base_model, self.peft_model_id)
@@ -94,6 +95,9 @@ class GemmaFinetunedASRModel(GemmaASRModel):
             gemma_outputs = self.model.generate(
                 **gemma_inputs,
                 max_new_tokens=256,
+                temperature=1.0,
+                top_p=0.95,
+                top_k=64
             )
             
         predictions = []
@@ -127,23 +131,27 @@ def main():
     dataset = loader.load(max_samples=max_samples)
     print(f"Loaded {len(dataset)} samples from {args.dataset_name} ({split}) for evaluation.")
 
-    # 2. 建立微調模型 (這裡只測試 Finetuned Gemma，我們給 breeze 傳入一個 Mock 或是空物件以節省顯存)
+    # 2. 建立微調模型 (包含 Base Model 與 LoRA Adapter)
     finetuned_gemma = GemmaFinetunedASRModel(
         base_model_id="google/gemma-4-E4B-it",
         peft_model_id=args.peft_model,
         device=device
     )
 
-    # 為了套用原本的 ASREvaluator，我們需要建立一個 Dummy Breeze Model 避免程式噴錯
-    class DummyBreezeModel:
+    # 利用 Wrapper 暫時停用 Adapter，作為 Gemma-Before (Base Model)
+    class BaseGemmaWrapper:
+        def __init__(self, finetuned_model):
+            self.finetuned_model = finetuned_model
+            
         def transcribe_batch(self, audio_arrays, sampling_rates):
-            return ["(Skipped Breeze)"] * len(audio_arrays)
+            with self.finetuned_model.model.disable_adapter():
+                return self.finetuned_model.transcribe_batch(audio_arrays, sampling_rates)
 
     # 3. 執行評估
     evaluator = ASREvaluator(output_path=args.output)
     evaluator.evaluate(
-        breeze_model=DummyBreezeModel(),
-        gemma_model=finetuned_gemma,
+        model_before=BaseGemmaWrapper(finetuned_gemma),
+        model_after=finetuned_gemma,
         dataset=dataset,
         batch_size=args.batch_size
     )

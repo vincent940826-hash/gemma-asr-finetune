@@ -66,8 +66,8 @@ def main():
     # 3. 執行評估
     evaluator = ASREvaluator(output_path=args.output)
     evaluator.evaluate(
-        breeze_model=breeze_model,
-        gemma_model=gemma_model,
+        model_before=gemma_model,
+        model_after=breeze_model,
         dataset=dataset,
         batch_size=args.batch_size
     )
