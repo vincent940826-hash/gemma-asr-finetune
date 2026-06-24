@@ -53,12 +53,7 @@ class GemmaFinetunedASRModel(GemmaASRModel):
         self.model.eval()
 
     def transcribe_batch(self, audio_arrays: list, sampling_rates: list) -> list[str]:
-        prompt_text = (
-            "Transcribe the following speech segment in Traditional Chinese into Traditional Chinese text. "
-            "Follow these specific instructions for formatting the answer:\n"
-            "* Only output the transcription, with no newlines.\n"
-            "* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three."
-        )
+        prompt_text = "請將以下語音內容轉寫為繁體中文。"
         
         batch_messages = []
         for audio_array in audio_arrays:
@@ -95,9 +90,7 @@ class GemmaFinetunedASRModel(GemmaASRModel):
             gemma_outputs = self.model.generate(
                 **gemma_inputs,
                 max_new_tokens=256,
-                temperature=1.0,
-                top_p=0.95,
-                top_k=64
+                do_sample=False
             )
             
         predictions = []

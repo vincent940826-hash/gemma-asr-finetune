@@ -15,12 +15,7 @@ class ASRDatasetLoader:
         else:
             self.target_sr = 16000 # Fallback
             
-        self.gemma_prompt = (
-            "Transcribe the following speech segment in Traditional Chinese into Traditional Chinese text. "
-            "Follow these specific instructions for formatting the answer:\n"
-            "* Only output the transcription, with no newlines.\n"
-            "* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three."
-        )
+        self.gemma_prompt = "請將以下語音內容轉寫為繁體中文。"
 
     def process_audio(self, audio_path=None, audio_array=None, orig_sr=None):
         if audio_path is not None:
