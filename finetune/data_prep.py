@@ -3,8 +3,20 @@ import json
 import numpy as np
 import torch
 import librosa
+import re
+import cn2an
 from torch.utils.data import Dataset
 from datasets import load_dataset, concatenate_datasets, Dataset as HFDataset
+
+def normalize_text(text):
+    if not isinstance(text, str):
+        return text
+    try:
+        text = cn2an.transform(text, "an2cn")
+    except Exception:
+        pass
+    text = re.sub(r'[^\w\s]', '', text)
+    return text.strip()
 
 class ASRDatasetLoader:
     def __init__(self, processor):
@@ -15,7 +27,7 @@ class ASRDatasetLoader:
         else:
             self.target_sr = 16000 # Fallback
             
-        self.gemma_prompt = "請將以下語音內容轉寫為繁體中文。"
+        self.gemma_prompt = "請將以下語音內容轉寫為繁體中文，請不要輸出任何標點符號，並將阿拉伯數字轉為中文數字。"
 
     def process_audio(self, audio_path=None, audio_array=None, orig_sr=None):
         if audio_path is not None:
@@ -39,7 +51,7 @@ class ASRDatasetLoader:
             )
             return {
                 "audio_array": audio_array,
-                "target_text": batch["sentence"]
+                "target_text": normalize_text(batch["sentence"])
             }
             
         ds = ds.map(standardize, remove_columns=ds.column_names, num_proc=1) # Reduced num_proc to avoid memory issues
@@ -64,7 +76,7 @@ class ASRDatasetLoader:
             audio_array = self.process_audio(audio_path=batch["audio_filepath"])
             return {
                 "audio_array": audio_array,
-                "target_text": batch["text"]
+                "target_text": normalize_text(batch["text"])
             }
             
         ds = ds.map(standardize, remove_columns=ds.column_names, num_proc=1)

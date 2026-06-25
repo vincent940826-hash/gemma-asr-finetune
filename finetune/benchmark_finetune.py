@@ -53,7 +53,7 @@ class GemmaFinetunedASRModel(GemmaASRModel):
         self.model.eval()
 
     def transcribe_batch(self, audio_arrays: list, sampling_rates: list) -> list[str]:
-        prompt_text = "請將以下語音內容轉寫為繁體中文。"
+        prompt_text = "請將以下語音內容轉寫為繁體中文，請不要輸出任何標點符號，並將阿拉伯數字轉為中文數字。"
         
         batch_messages = []
         for audio_array in audio_arrays:

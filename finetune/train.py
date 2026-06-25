@@ -24,7 +24,7 @@ def main():
         output_dir="./outputs",
         per_device_train_batch_size=2,
         gradient_accumulation_steps=4,
-        learning_rate=2e-5, # 降低學習率以避免對齊破壞
+        learning_rate=2e-4, # 提高學習率 (V6 已解決格式衝突，可安全提速)
         warmup_ratio=0.1,   # 增加預熱步數，穩定初期訓練
         num_train_epochs=3,
         fp16=True, # Critical for V100
