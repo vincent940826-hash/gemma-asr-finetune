@@ -27,7 +27,7 @@ class ASRDatasetLoader:
         else:
             self.target_sr = 16000 # Fallback
             
-        self.gemma_prompt = "請將以下語音內容轉寫為繁體中文，請不要輸出任何標點符號，並將阿拉伯數字轉為中文數字。"
+        self.gemma_prompt = "請將以下語音內容轉寫為繁體中文。"
 
     def process_audio(self, audio_path=None, audio_array=None, orig_sr=None):
         if audio_path is not None:
@@ -51,7 +51,7 @@ class ASRDatasetLoader:
             )
             return {
                 "audio_array": audio_array,
-                "target_text": normalize_text(batch["sentence"])
+                "target_text": batch["sentence"]
             }
             
         ds = ds.map(standardize, remove_columns=ds.column_names, num_proc=1) # Reduced num_proc to avoid memory issues
@@ -76,7 +76,7 @@ class ASRDatasetLoader:
             audio_array = self.process_audio(audio_path=batch["audio_filepath"])
             return {
                 "audio_array": audio_array,
-                "target_text": normalize_text(batch["text"])
+                "target_text": batch["text"]
             }
             
         ds = ds.map(standardize, remove_columns=ds.column_names, num_proc=1)
@@ -124,30 +124,41 @@ class ASRDataCollator:
         prompt_texts = [f["prompt_text"] for f in features]
         target_texts = [f["target_text"] for f in features]
         
-        batch_messages = []
+        full_texts = []
+        prompt_lengths = []
+        
         for i in range(len(features)):
-            batch_messages.append([
+            # 1. Generate the exact prompt template used in inference
+            user_msg = [
                 {
                     "role": "user",
                     "content": [
                         {"type": "text", "text": prompt_texts[i]},
                         {"type": "audio", "audio": audio_arrays[i]},
                     ]
-                },
-                {
-                    "role": "model",
-                    "content": [
-                        {"type": "text", "text": target_texts[i]}
-                    ]
                 }
-            ])
+            ]
             
-        full_texts = self.processor.apply_chat_template(
-            batch_messages,
-            tokenize=False
-        )
-        
-        # Processor pads audio lists dynamically to the max length in batch
+            prompt_only_text = self.processor.apply_chat_template(
+                [user_msg],
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False
+            )[0]
+            
+            # 2. Append target text and EOS token to create the full training sequence
+            full_text = prompt_only_text + target_texts[i] + self.processor.tokenizer.eos_token
+            full_texts.append(full_text)
+            
+            # 3. Calculate prompt length for accurate masking later
+            prompt_inputs = self.processor(
+                text=prompt_only_text,
+                audio=[audio_arrays[i]],
+                return_tensors="pt"
+            )
+            prompt_lengths.append(prompt_inputs["input_ids"].shape[1])
+            
+        # Process the full batch
         batch = self.processor(
             text=full_texts,
             audio=audio_arrays,
@@ -157,30 +168,9 @@ class ASRDataCollator:
         
         labels = batch["input_ids"].clone()
         
+        # Mask everything except the target text
         for i in range(len(labels)):
-            # To compute prompt length accurately, we format a message with only the user turn
-            user_msg = [[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt_texts[i]},
-                        {"type": "audio", "audio": audio_arrays[i]},
-                    ]
-                }
-            ]]
-            prompt_only_text = self.processor.apply_chat_template(
-                user_msg,
-                tokenize=False,
-                add_generation_prompt=True
-            )[0]
-            
-            # Accurately compute prompt length WITH audio tokens
-            prompt_inputs = self.processor(
-                text=prompt_only_text,
-                audio=[audio_arrays[i]],
-                return_tensors="pt"
-            )
-            prompt_length = prompt_inputs["input_ids"].shape[1]
+            prompt_length = prompt_lengths[i]
             
             if self.processor.tokenizer.padding_side == "right":
                 labels[i, :prompt_length] = -100
@@ -188,6 +178,7 @@ class ASRDataCollator:
                 pad_len = (batch["input_ids"][i] == self.processor.tokenizer.pad_token_id).sum()
                 labels[i, pad_len : pad_len + prompt_length] = -100
                 
+            # Mask padding tokens
             labels[i, batch["input_ids"][i] == self.processor.tokenizer.pad_token_id] = -100
             
         batch["labels"] = labels

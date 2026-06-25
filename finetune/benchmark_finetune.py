@@ -8,7 +8,7 @@ sys.modules['torchcodec'] = None  # 繞過不相容套件
 
 import argparse
 import torch
-from transformers import AutoProcessor, AutoModelForMultimodalLM, BitsAndBytesConfig
+from transformers import AutoProcessor, AutoModelForMultimodalLM
 from peft import PeftModel
 
 # 導入 benchmark 的核心庫
@@ -36,11 +36,11 @@ class GemmaFinetunedASRModel(GemmaASRModel):
             
         base_model = AutoModelForMultimodalLM.from_pretrained(
             self.model_id, 
-            torch_dtype=torch.bfloat16,
+            torch_dtype=torch.float16,
             device_map="auto" if self.device == "cuda" else None
         )
         
-        # 修復 V100 上的 FP16 注意力溢位問題 (避免推論時產生 NaN 與亂碼)
+        # Fix attention overflow for float16 on V100
         if hasattr(base_model.config, "audio_config") and base_model.config.audio_config is not None:
             base_model.config.audio_config.attention_invalid_logits_value = -60000.0
         if hasattr(base_model, "audio_tower") and getattr(base_model, "audio_tower") is not None:
@@ -53,7 +53,7 @@ class GemmaFinetunedASRModel(GemmaASRModel):
         self.model.eval()
 
     def transcribe_batch(self, audio_arrays: list, sampling_rates: list) -> list[str]:
-        prompt_text = "請將以下語音內容轉寫為繁體中文，請不要輸出任何標點符號，並將阿拉伯數字轉為中文數字。"
+        prompt_text = "請將以下語音內容轉寫為繁體中文。"
         
         batch_messages = []
         for audio_array in audio_arrays:
@@ -84,6 +84,10 @@ class GemmaFinetunedASRModel(GemmaASRModel):
             padding=True
         ).to(self.device)
         
+        # input_len = padded prompt length (same for all items due to left-padding).
+        # generate() returns tensors of shape (batch, input_len + new_tokens).
+        # With left-padding, all input rows end at the same position, so
+        # slicing from input_len correctly isolates each item's generated tokens.
         input_len = gemma_inputs["input_ids"].shape[1]
         
         with torch.no_grad():
