@@ -151,10 +151,10 @@ class ASRDataCollator:
             full_texts.append(full_text)
             
             # 3. Calculate prompt length for accurate masking later
-            prompt_inputs = self.processor(
+            prompt_inputs = self.processor.tokenizer(
                 text=prompt_only_text,
-                audio=[audio_arrays[i]],
-                return_tensors="pt"
+                return_tensors="pt",
+                add_special_tokens=False
             )
             prompt_lengths.append(prompt_inputs["input_ids"].shape[1])
             
@@ -163,7 +163,8 @@ class ASRDataCollator:
             text=full_texts,
             audio=audio_arrays,
             return_tensors="pt",
-            padding=True
+            padding=True,
+            add_special_tokens=False
         )
         
         labels = batch["input_ids"].clone()

@@ -24,8 +24,8 @@ def main():
         output_dir="./outputs",
         per_device_train_batch_size=2,
         gradient_accumulation_steps=4,
-        learning_rate=2e-4, # 提高學習率 (V6 已解決格式衝突，可安全提速)
-        warmup_ratio=0.1,   # 增加預熱步數，穩定初期訓練
+        learning_rate=1e-4, 
+        warmup_ratio=0.2, 
         num_train_epochs=3,
         fp16=True, # Critical for V100
         bf16=False,
@@ -36,7 +36,7 @@ def main():
         eval_steps=200,
         save_strategy="steps",
         save_steps=200,
-        save_total_limit=20, # 保留最近 20 個 Checkpoint 避免硬碟塞滿
+        save_total_limit=20,
         remove_unused_columns=False, # Required because inputs are dynamic dicts
         dataloader_num_workers=2,
         dataloader_pin_memory=True,

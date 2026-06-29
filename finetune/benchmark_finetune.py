@@ -81,7 +81,8 @@ class GemmaFinetunedASRModel(GemmaASRModel):
             audio=audio_arrays,
             sampling_rate=sr,
             return_tensors="pt",
-            padding=True
+            padding=True,
+            add_special_tokens=False
         ).to(self.device)
         
         # input_len = padded prompt length (same for all items due to left-padding).
@@ -91,12 +92,13 @@ class GemmaFinetunedASRModel(GemmaASRModel):
         input_len = gemma_inputs["input_ids"].shape[1]
         
         with torch.no_grad():
-            gemma_outputs = self.model.generate(
-                **gemma_inputs,
-                max_new_tokens=256,
-                do_sample=False
-            )
-            
+            with torch.autocast("cuda", dtype=torch.float16):
+                gemma_outputs = self.model.generate(
+                    **gemma_inputs,
+                    max_new_tokens=256,
+                    do_sample=False
+                )
+
         predictions = []
         for i in range(len(audio_arrays)):
             pred_tokens = gemma_outputs[i][input_len:]

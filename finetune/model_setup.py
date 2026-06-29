@@ -49,10 +49,14 @@ def apply_lora(model, target_modules=None):
     if target_modules is None:
         target_modules = []
         for name, module in model.named_modules():
-            if "audio_tower" in name or "embed_audio" in name:
-                class_name = module.__class__.__name__
-                has_children = len(list(module.children())) > 0
-                if not has_children and ("Linear" in class_name or "linear" in name):
+            class_name = module.__class__.__name__
+            has_children = len(list(module.children())) > 0
+            if not has_children and ("Linear" in class_name or "linear" in name):
+                # 1. Target LLM attention (q_proj, v_proj) to learn the format/punctuation without hallucination
+                if "language_model" in name and ("q_proj" in name or "v_proj" in name):
+                    target_modules.append(name)
+                # 2. Target audio projectors to adapt acoustic features to the LLM
+                elif "embed_audio" in name or "subsample_conv_projection" in name:
                     target_modules.append(name)
 
     config = LoraConfig(
