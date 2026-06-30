@@ -43,8 +43,8 @@ def apply_lora(model, target_modules=None):
             class_name = module.__class__.__name__
             has_children = len(list(module.children())) > 0
             if not has_children and ("Linear" in class_name or "linear" in name):
-                # Target ONLY audio projectors to adapt acoustic features to the frozen LLM
-                if "embed_audio" in name or "subsample_conv_projection" in name:
+                # Target audio tower and projectors to adapt acoustic features and encoder to the frozen LLM
+                if "audio_tower" in name or "embed_audio" in name or "subsample_conv_projection" in name:
                     target_modules.append(name)
 
     config = LoraConfig(

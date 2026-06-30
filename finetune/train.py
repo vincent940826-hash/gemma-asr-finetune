@@ -24,7 +24,7 @@ def main():
         output_dir="./outputs",
         per_device_train_batch_size=2,
         gradient_accumulation_steps=4,
-        learning_rate=1e-4, 
+        learning_rate=5e-5, 
         warmup_ratio=0.2, 
         num_train_epochs=3,
         fp16=True, # Critical for V100
@@ -54,7 +54,7 @@ def main():
     trainer.train()
     
     print("Saving final model...")
-    trainer.save_model("./checkpoints/final_lora")
+    trainer.save_model("./checkpoints/final_lora_v13")
 
 if __name__ == "__main__":
     main()
