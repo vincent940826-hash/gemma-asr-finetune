@@ -14,18 +14,10 @@ def get_processor_and_model(model_id="google/gemma-4-E4B-it"):
     # 1. Load Processor
     processor = AutoProcessor.from_pretrained(model_id)
 
-    # 2. Configure 4-bit Quantization (Must use float16 for V100)
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,
-    )
-
-    # 3. Load Model
+    # 2. Configure Model directly in float16 for full precision training
     model = AutoModelForMultimodalLM.from_pretrained(
         model_id,
-        quantization_config=bnb_config,
+        torch_dtype=torch.float16,
         device_map="auto"
     )
 
@@ -44,7 +36,6 @@ def apply_lora(model, target_modules=None):
     If target_modules is None, dynamically targets all leaf linear layers
     in the audio tower and embed audio.
     """
-    model = prepare_model_for_kbit_training(model)
     
     if target_modules is None:
         target_modules = []
@@ -52,11 +43,8 @@ def apply_lora(model, target_modules=None):
             class_name = module.__class__.__name__
             has_children = len(list(module.children())) > 0
             if not has_children and ("Linear" in class_name or "linear" in name):
-                # 1. Target LLM attention (q_proj, v_proj) to learn the format/punctuation without hallucination
-                if "language_model" in name and ("q_proj" in name or "v_proj" in name):
-                    target_modules.append(name)
-                # 2. Target audio projectors to adapt acoustic features to the LLM
-                elif "embed_audio" in name or "subsample_conv_projection" in name:
+                # Target ONLY audio projectors to adapt acoustic features to the frozen LLM
+                if "embed_audio" in name or "subsample_conv_projection" in name:
                     target_modules.append(name)
 
     config = LoraConfig(

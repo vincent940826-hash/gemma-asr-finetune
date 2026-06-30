@@ -151,8 +151,9 @@ class ASRDataCollator:
             full_texts.append(full_text)
             
             # 3. Calculate prompt length for accurate masking later
-            prompt_inputs = self.processor.tokenizer(
+            prompt_inputs = self.processor(
                 text=prompt_only_text,
+                audio=[audio_arrays[i]],
                 return_tensors="pt",
                 add_special_tokens=False
             )
