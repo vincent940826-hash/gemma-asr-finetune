@@ -13,8 +13,8 @@ def main():
     # Load dataset
     loader = ASRDatasetLoader(processor)
     print("Loading datasets...")
-    raw_train_dataset = loader.load_common_voice(split="train")
-    raw_eval_dataset = loader.load_common_voice(split="validation")
+    raw_train_dataset = loader.get_combined_dataset(include_cv=True, include_fs=True, split="train")
+    raw_eval_dataset = loader.get_combined_dataset(include_cv=True, include_fs=False, split="validation")
     
     train_dataset = GemmaASRDataset(raw_train_dataset, prompt=loader.gemma_prompt)
     eval_dataset = GemmaASRDataset(raw_eval_dataset, prompt=loader.gemma_prompt)
@@ -52,9 +52,9 @@ def main():
     
     print("Starting training...")
     trainer.train()
-    
+    # trainer.train(resume_from_checkpoint=True)
     print("Saving final model...")
-    trainer.save_model("./checkpoints/final_lora_v13")
+    trainer.save_model("./checkpoints/final_lora_v16")
 
 if __name__ == "__main__":
     main()

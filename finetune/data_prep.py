@@ -29,12 +29,18 @@ class ASRDatasetLoader:
             
         self.gemma_prompt = "請將以下語音內容轉寫為繁體中文。"
 
-    def process_audio(self, audio_path=None, audio_array=None, orig_sr=None):
+    def process_audio(self, audio_path=None, audio_array=None, orig_sr=None, add_noise=False):
         if audio_path is not None:
             audio_array, _ = librosa.load(audio_path, sr=self.target_sr)
         elif audio_array is not None and orig_sr is not None:
             if orig_sr != self.target_sr:
                 audio_array = librosa.resample(audio_array, orig_sr=orig_sr, target_sr=self.target_sr)
+        
+        if add_noise and audio_array is not None:
+            # Gaussian White Noise augmentation
+            noise_amp = 0.005 * np.random.uniform(0.5, 1.5) * np.amax(np.abs(audio_array))
+            audio_array = audio_array + noise_amp * np.random.normal(size=audio_array.shape[0])
+            
         return audio_array
 
     def load_common_voice(self, split="train", limit=None):
@@ -47,7 +53,8 @@ class ASRDatasetLoader:
             audio_data = batch["audio"]
             audio_array = self.process_audio(
                 audio_array=audio_data["array"], 
-                orig_sr=audio_data["sampling_rate"]
+                orig_sr=audio_data["sampling_rate"],
+                add_noise=(split == "train") # Only add noise during training
             )
             return {
                 "audio_array": audio_array,
@@ -55,6 +62,31 @@ class ASRDatasetLoader:
             }
             
         ds = ds.map(standardize, remove_columns=ds.column_names, num_proc=1) # Reduced num_proc to avoid memory issues
+        return ds
+
+    def load_taiwan_tongues(self, split="train", limit=None):
+        from datasets import load_dataset
+        ds = load_dataset("adi-gov-tw/Taiwan-Tongues-ASR-CE-dataset-zhtw", split=split)
+        
+        if limit is not None:
+            ds = ds.select(range(limit))
+            
+        def standardize(batch):
+            # Taiwan-Tongues uses 'mp3' instead of 'audio'
+            audio_data = batch["mp3"]
+            audio_array = self.process_audio(
+                audio_array=audio_data["array"], 
+                orig_sr=audio_data["sampling_rate"],
+                add_noise=True
+            )
+            
+            return {
+                "audio_array": audio_array,
+                "target_text": batch["txt"]
+            }
+            
+        # Using num_proc=4 as this dataset doesn't have the heavy duration filtering memory overhead
+        ds = ds.map(standardize, remove_columns=ds.column_names, num_proc=4)
         return ds
 
     def load_local_jsonl(self, jsonl_path):
@@ -82,10 +114,14 @@ class ASRDatasetLoader:
         ds = ds.map(standardize, remove_columns=ds.column_names, num_proc=1)
         return ds
 
-    def get_combined_dataset(self, include_cv=True, local_jsonl_paths=None, cv_split="train"):
+    def get_combined_dataset(self, include_cv=True, include_fs=True, local_jsonl_paths=None, split="train"):
         datasets_to_concat = []
         if include_cv:
-            datasets_to_concat.append(self.load_common_voice(split=cv_split))
+            datasets_to_concat.append(self.load_common_voice(split=split))
+            
+        if include_fs and split == "train": 
+            # Using 'train' split of Taiwan-Tongues
+            datasets_to_concat.append(self.load_taiwan_tongues(split="train"))
         
         if local_jsonl_paths:
             for path in local_jsonl_paths:

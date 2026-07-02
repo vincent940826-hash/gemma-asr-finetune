@@ -14,12 +14,16 @@ def get_processor_and_model(model_id="google/gemma-4-E4B-it"):
     # 1. Load Processor
     processor = AutoProcessor.from_pretrained(model_id)
 
-    # 2. Configure Model directly in float16 for full precision training
+    # 2. Load model on GPU
+    print("Loading base model on GPU...")
     model = AutoModelForMultimodalLM.from_pretrained(
         model_id,
         torch_dtype=torch.float16,
-        device_map="auto"
+        low_cpu_mem_usage=True,
+        device_map="cuda"
     )
+
+    # No V13 merging; we are starting fresh with Deep Voice Mapping (V16)
 
     # Fix the attention_invalid_logits_value to avoid float16 overflow
     if hasattr(model.config, "audio_config") and model.config.audio_config is not None:
@@ -38,20 +42,14 @@ def apply_lora(model, target_modules=None):
     """
     
     if target_modules is None:
-        target_modules = []
-        for name, module in model.named_modules():
-            class_name = module.__class__.__name__
-            has_children = len(list(module.children())) > 0
-            if not has_children and ("Linear" in class_name or "linear" in name):
-                # Target audio tower and projectors to adapt acoustic features and encoder to the frozen LLM
-                if "audio_tower" in name or "embed_audio" in name or "subsample_conv_projection" in name:
-                    target_modules.append(name)
+        # V16 Deep Voice Mapping: Target EXACTLY the same layers as V13
+        target_modules = ['audio_tower.layers.0.self_attn.k_proj.linear', 'audio_tower.layers.5.self_attn.v_proj.linear', 'audio_tower.layers.2.self_attn.v_proj.linear', 'audio_tower.layers.0.self_attn.q_proj.linear', 'audio_tower.layers.10.self_attn.q_proj.linear', 'audio_tower.layers.1.self_attn.q_proj.linear', 'post.linear', 'audio_tower.layers.2.self_attn.q_proj.linear', 'audio_tower.layers.6.self_attn.v_proj.linear', 'ffw_layer_1.linear', 'audio_tower.layers.11.self_attn.q_proj.linear', 'audio_tower.layers.8.self_attn.k_proj.linear', 'audio_tower.layers.6.self_attn.k_proj.linear', 'audio_tower.layers.5.self_attn.q_proj.linear', 'audio_tower.layers.0.self_attn.v_proj.linear', 'audio_tower.layers.11.self_attn.v_proj.linear', 'audio_tower.layers.10.self_attn.k_proj.linear', 'audio_tower.layers.5.self_attn.k_proj.linear', 'audio_tower.layers.7.self_attn.k_proj.linear', 'embed_audio.embedding_projection', 'linear_start.linear', 'audio_tower.layers.3.self_attn.q_proj.linear', 'audio_tower.layers.1.self_attn.v_proj.linear', 'audio_tower.layers.4.self_attn.v_proj.linear', 'output_proj', 'audio_tower.layers.3.self_attn.v_proj.linear', 'audio_tower.layers.9.self_attn.k_proj.linear', 'audio_tower.layers.9.self_attn.v_proj.linear', 'audio_tower.layers.10.self_attn.v_proj.linear', 'audio_tower.layers.7.self_attn.q_proj.linear', 'audio_tower.layers.11.self_attn.k_proj.linear', 'audio_tower.layers.1.self_attn.k_proj.linear', 'relative_k_proj', 'audio_tower.layers.4.self_attn.k_proj.linear', 'audio_tower.layers.2.self_attn.k_proj.linear', 'audio_tower.layers.7.self_attn.v_proj.linear', 'input_proj_linear', 'audio_tower.layers.8.self_attn.v_proj.linear', 'audio_tower.layers.6.self_attn.q_proj.linear', 'audio_tower.layers.3.self_attn.k_proj.linear', 'ffw_layer_2.linear', 'audio_tower.layers.4.self_attn.q_proj.linear', 'audio_tower.layers.8.self_attn.q_proj.linear', 'audio_tower.layers.9.self_attn.q_proj.linear', 'linear_end.linear']
 
     config = LoraConfig(
-        r=16,
-        lora_alpha=32,
+        r=64,
+        lora_alpha=128,
         target_modules=target_modules,
-        lora_dropout=0.05,
+        lora_dropout=0.1,
         bias="none",
         task_type="CAUSAL_LM"
     )
